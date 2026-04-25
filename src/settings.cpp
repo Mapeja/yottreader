@@ -41,13 +41,13 @@ struct Setting {
 
 static Setting cfg[SET_COUNT] = {
   { "Font size",   SK_CHOICE, FONT_SIZE_MEDIUM, 0, 2 },
-  { "Font",        SK_CHOICE, FONT_FAMILY_SANS, 0, 1 },
+  { "Font",        SK_CHOICE, FONT_FAMILY_SANS, 0, 3 },
   { "Hyphenation", SK_CHOICE, 0,                0, 1 },
   { "Display",     SK_CHOICE, 0,                0, 1 }, // 0 light, 1 dark (placeholder)
   { "Orientation", SK_CHOICE, 0,                0, 1 }, // 0 normal, 1 flipped
   { "Refresh",     SK_CHOICE, 10,               0, 0 }, // fixed options
   { "Stats bar",   SK_CHOICE, 0,                0, 2 }, // 0 off, 1 chapter, 2 book
-  { "Sleep",       SK_CHOICE, 0,                0, 1 }, // 0 light, 1 deep
+  { "Deep sleep",  SK_CHOICE, 0,                0, 5 }, // 0 never, 1-5 = 2/5/10/15/30 min
   { "WiFi upload", SK_ACTION, 0,                0, 0 },
   { "Shortcuts",   SK_ACTION, 0,                0, 0 },
 };
@@ -60,24 +60,23 @@ struct ShortcutLine {
 
 static const ShortcutLine SHORTCUT_LINES[] = {
   { "READING",   "",                  true  },
-  { "single",    "next page",         false },
-  { "double",    "prev page",         false },
-  { "long",      "library",           false },
-  { "tap+hold",  "settings",          false },
+  { "single press",    "next page",         false },
+  { "double press",    "previous page",     false },
+  { "triple press",    "refresh screen",    false },
+  { "long press",      "go to library",           false },
+  { "press+hold",  "go to settings",          false },
   { "LIBRARY",   "",                  true  },
-  { "single",    "next book",         false },
-  { "double",    "prev book",         false },
-  { "long",      "open",              false },
-  { "tap+hold",  "settings",          false },
+  { "single press",    "next book",         false },
+  { "double press",    "previous book",     false },
+  { "triple press",    "refresh screen",    false },
+  { "long press",      "open book",              false },
+  { "press+hold",  "go to settings",          false },
   { "SETTINGS",  "",                  true  },
-  { "single",    "next",              false },
-  { "double",    "prev",              false },
-  { "long",      "edit/apply",        false },
-  { "tap+hold",  "library",           false },
-  { "SHORTCUTS", "",                  true  },
-  { "single",    "scroll down",       false },
-  { "double",    "scroll up",         false },
-  { "long",      "exit",              false },
+  { "single press",    "next item",              false },
+  { "double press",    "previous item",          false },
+  { "triple press",    "refresh screen",    false },
+  { "long press",      "edit/apply",        false },
+  { "press+hold",  "go to library",           false },
 };
 static const int SHORTCUT_COUNT = sizeof(SHORTCUT_LINES) / sizeof(SHORTCUT_LINES[0]);
 
@@ -194,7 +193,12 @@ static const char* valueStr(int id) {
       if (cfg[id].value == FONT_SIZE_LARGE) return "large";
       return "medium";
     case SET_FONT_FAMILY:
-      return cfg[id].value == FONT_FAMILY_SERIF ? "serif" : "sans serif";
+      switch (cfg[id].value) {
+        case FONT_FAMILY_SANS_BOLD:  return "sans bold";
+        case FONT_FAMILY_SERIF:      return "serif";
+        case FONT_FAMILY_SERIF_BOLD: return "serif bold";
+        default:                     return "sans";
+      }
     case SET_HYPHENATION:
       return cfg[id].value ? "on" : "off";
     case SET_DISPLAY_MODE:
@@ -209,7 +213,14 @@ static const char* valueStr(int id) {
       if (cfg[id].value == 2) return "book";
       return "off";
     case SET_SLEEP_MODE:
-      return cfg[id].value ? "light+deep" : "light";
+      switch (cfg[id].value) {
+        case 1: return "2 min";
+        case 2: return "5 min";
+        case 3: return "10 min";
+        case 4: return "15 min";
+        case 5: return "30 min";
+        default: return "never";
+      }
     case SET_WIFI_UPLOAD:
       return "activate";
     case SET_SHORTCUTS:
@@ -267,7 +278,15 @@ void settings_load() {
 }
 
 int settings_get_refresh_interval() { return cfg[SET_REFRESH].value; }
-int settings_get_sleep_mode() { return cfg[SET_SLEEP_MODE].value; }
+int settings_get_sleep_mode() {
+  return cfg[SET_SLEEP_MODE].value > 0 ? SLEEP_LIGHT_AND_DEEP : SLEEP_LIGHT_ONLY;
+}
+uint32_t settings_get_deep_sleep_timeout_ms() {
+  static const uint32_t TABLE[] = { 0, 2*60000UL, 5*60000UL, 10*60000UL, 15*60000UL, 30*60000UL };
+  int v = cfg[SET_SLEEP_MODE].value;
+  if (v < 1 || v > 5) v = 3; // fallback to 10 min
+  return TABLE[v];
+}
 
 WebSettings settings_get_web() {
   WebSettings ws;

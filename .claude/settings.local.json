@@ -14,7 +14,23 @@
       "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\georgia.ttf\" 8 Georgia_Regular8pt7b --threshold 100)",
       "Bash(pip install *)",
       "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\georgia.ttf\" 6 Georgia_Regular6pt7b --threshold 100)",
-      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\georgia.ttf\" 10 Georgia_Regular10pt7b --threshold 100)"
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\georgia.ttf\" 10 Georgia_Regular10pt7b --threshold 100)",
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\calibri.ttf\" 8 Calibri_Regular8pt7b --threshold 96)",
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\calibri.ttf\" 6 Calibri_Regular6pt7b --threshold 88)",
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\calibri.ttf\" 10 Calibri_Regular10pt7b --threshold 100)",
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\consola.ttf\" 7 Consolas_Regular7pt7b --threshold 100)",
+      "Bash(python tools/font_convert.py \"C:\\\\Windows\\\\Fonts\\\\consola.ttf\" 5 Consolas_Regular5pt7b --threshold 90)",
+      "PowerShell(cd \"c:\\\\Users\\\\stund\\\\OneDrive\\\\Dokumente\\\\PlatformIO\\\\Projects\\\\yottreader\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 40)",
+      "PowerShell(cd \"c:\\\\Users\\\\stund\\\\OneDrive\\\\Dokumente\\\\PlatformIO\\\\Projects\\\\yottreader\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 10)",
+      "Bash(python tools/font_convert.py \"tools/fonts/AtkinsonHyperlegible-Bold.ttf\"  6  AtkinsonHyperlegible_BoldAA6pt7b  --threshold 88)",
+      "Bash(python tools/font_convert.py \"tools/fonts/AtkinsonHyperlegible-Bold.ttf\"  8  AtkinsonHyperlegible_BoldAA8pt7b  --threshold 100)",
+      "Bash(python tools/font_convert.py \"tools/fonts/AtkinsonHyperlegible-Bold.ttf\"  10 AtkinsonHyperlegible_BoldAA10pt7b --threshold 108)",
+      "Bash(python tools/font_convert.py \"tools/fonts/SourceSerif4-SemiBold.ttf\"      6  SourceSerif4_BoldAA6pt7b          --threshold 88)",
+      "Bash(python tools/font_convert.py \"tools/fonts/SourceSerif4-SemiBold.ttf\"      8  SourceSerif4_BoldAA8pt7b          --threshold 100)",
+      "PowerShell(cd \"c:\\\\Users\\\\stund\\\\OneDrive\\\\Dokumente\\\\PlatformIO\\\\Projects\\\\yottreader\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 8)",
+      "Bash(python tools/font_inspect.py src/fonts/AtkinsonHyperlegible_Bold8pt7b.h --chars \"lino\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python tools/font_inspect.py src/fonts/AtkinsonHyperlegible_Bold8pt7b.h --chars \"Il.O\")"
     ]
   }
 }

@@ -61,6 +61,8 @@ void sm_handle(ButtonEvent evt) {
         reader_go_prev();
         reader_draw();
         storage_save_position(reader_path(), reader_current_page(), reader_page_count());
+      } else if (evt == BTN_TRIPLE) {
+        reader_draw(true);
       } else if (evt == BTN_LONG) {
         storage_save_position(reader_path(), reader_current_page(), reader_page_count());
         enterMenu();
@@ -71,6 +73,7 @@ void sm_handle(ButtonEvent evt) {
       break;
 
     case APP_MENU: {
+      if (evt == BTN_TRIPLE) { menu_open(); break; }
       const char* result = menu_handle(evt);
       if (result == nullptr) break;
       if (result[0] == '\0') {
@@ -82,6 +85,7 @@ void sm_handle(ButtonEvent evt) {
     }
 
     case APP_SETTINGS: {
+      if (evt == BTN_TRIPLE) { settings_open(); break; }
       SettingsResult r = settings_handle(evt);
       if (r == SETTINGS_GO_LIBRARY) enterMenu();
       else if (r == SETTINGS_GO_WIFI) enterWifi();

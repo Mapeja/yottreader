@@ -26,8 +26,7 @@
 GxEPD2_BW<GxEPD2_213_GDEY0213B74, GxEPD2_213_GDEY0213B74::HEIGHT>
   display(GxEPD2_213_GDEY0213B74(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
-static const uint32_t DEEP_SLEEP_IDLE_MS = 3UL * 60UL * 1000UL;
-static uint32_t       gLastActivityMs = 0;
+static uint32_t gLastActivityMs = 0;
 
 static uint8_t glyphW(const GFXfont* f, char c) {
   uint8_t u = (uint8_t)c;
@@ -274,7 +273,7 @@ static void maybeHandleSleep(ButtonEvent evt) {
   if (evt != BTN_NONE) gLastActivityMs = now;
 
   bool deepAllowed = (settings_get_sleep_mode() == SLEEP_LIGHT_AND_DEEP);
-  if (deepAllowed && (uint32_t)(now - gLastActivityMs) >= DEEP_SLEEP_IDLE_MS) {
+  if (deepAllowed && (uint32_t)(now - gLastActivityMs) >= settings_get_deep_sleep_timeout_ms()) {
 #if SLEEP_DEBUG
     Serial.printf("[SLEEP] enter deep @%lu idle=%lu\n",
       (unsigned long)now, (unsigned long)(now - gLastActivityMs));

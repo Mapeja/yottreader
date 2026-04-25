@@ -56,13 +56,11 @@ def convert(ttf_path: str, size_pt: int, varname: str,
     if mono:
         load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
     else:
-        # Grayscale anti-aliased rendering.  The auto-hinter typically gives
-        # more uniform stroke widths than the font's native mono hints, which
-        # is the main cause of the "sometimes 1, sometimes 2 pixels wide"
-        # artifact on low-DPI B&W e-paper panels.
-        load_flags = (freetype.FT_LOAD_RENDER |
-                      freetype.FT_LOAD_TARGET_NORMAL |
-                      freetype.FT_LOAD_FORCE_AUTOHINT)
+        # Grayscale anti-aliased rendering then threshold to 1-bit.
+        # Produces more uniform stroke widths than TARGET_MONO because the
+        # smooth coverage values give a consistent cut-off, avoiding the
+        # "sometimes 1, sometimes 2 pixels wide" artifact on B&W e-paper.
+        load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_NORMAL
 
     bitmap_data: list[int] = []
     glyphs: list[tuple] = []
@@ -92,10 +90,13 @@ def convert(ttf_path: str, size_pt: int, varname: str,
                     bits.append(1 if (bm.buffer[byte_idx] & (1 << bit_idx)) else 0)
         else:
             # 8-bit grayscale rows — threshold to 1-bit.
-            # pitch == w in NORMAL mode (one byte per pixel, no padding).
+            # pitch >= width (may include row padding).
+            buf_len = len(bm.buffer)
+            row_stride = bm.pitch if bm.pitch > 0 else w
             for row in range(h):
                 for col in range(w):
-                    gray = bm.buffer[row * bm.pitch + col]
+                    idx = row * row_stride + col
+                    gray = bm.buffer[idx] if idx < buf_len else 0
                     bits.append(1 if gray >= threshold else 0)
 
         # Pad to byte boundary
@@ -126,7 +127,7 @@ def convert(ttf_path: str, size_pt: int, varname: str,
     ]
 
     # Bitmap array
-    lines.append(f"static const uint8_t {varname}Bitmaps[] PROGMEM = {{")
+    lines.append(f"const uint8_t {varname}Bitmaps[] PROGMEM = {{")
     row: list[str] = []
     for i, b in enumerate(bitmap_data):
         row.append(f"0x{b:02X}")
@@ -136,7 +137,7 @@ def convert(ttf_path: str, size_pt: int, varname: str,
     lines += ["};", ""]
 
     # Glyph array
-    lines.append(f"static const GFXglyph {varname}Glyphs[] PROGMEM = {{")
+    lines.append(f"const GFXglyph {varname}Glyphs[] PROGMEM = {{")
     for i, (off, w, h, xa, xo, yo) in enumerate(glyphs):
         c = chr(FIRST_CHAR + i)
         label = repr(c) if c.isprintable() and c != "\\" else f"0x{FIRST_CHAR+i:02X}"
@@ -145,7 +146,7 @@ def convert(ttf_path: str, size_pt: int, varname: str,
 
     # Font struct
     lines += [
-        f"static const GFXfont {varname} PROGMEM = {{",
+        f"const GFXfont {varname} PROGMEM = {{",
         f"  (uint8_t  *){varname}Bitmaps,",
         f"  (GFXglyph *){varname}Glyphs,",
         f"  0x{FIRST_CHAR:02X}, 0x{LAST_CHAR:02X}, {y_advance}",

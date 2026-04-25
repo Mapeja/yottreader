@@ -64,13 +64,13 @@ h2{font-size:1rem;margin:16px 0 8px;color:#444}
 <h2>Settings</h2>
 <div id="sf">
   <div class="srow"><label>Font size</label><select id="s-fontSz"><option value="0">small</option><option value="1">medium</option><option value="2">large</option></select></div>
-  <div class="srow"><label>Font</label><select id="s-fontFam"><option value="0">sans serif</option><option value="1">serif</option></select></div>
+  <div class="srow"><label>Font</label><select id="s-fontFam"><option value="0">sans</option><option value="1">sans bold</option><option value="2">serif</option><option value="3">serif bold</option></select></div>
   <div class="srow"><label>Hyphenation</label><select id="s-hyphen"><option value="0">off</option><option value="1">on</option></select></div>
   <div class="srow"><label>Display</label><select id="s-display"><option value="0">light</option><option value="1">dark</option></select></div>
   <div class="srow"><label>Orientation</label><select id="s-orient"><option value="0">normal</option><option value="1">flipped</option></select></div>
   <div class="srow"><label>Full refresh every</label><select id="s-refresh"><option value="5">5 pages</option><option value="10">10 pages</option><option value="20">20 pages</option><option value="50">50 pages</option></select></div>
   <div class="srow"><label>Stats bar</label><select id="s-stats"><option value="0">off</option><option value="1">chapter</option><option value="2">book</option></select></div>
-  <div class="srow"><label>Sleep</label><select id="s-sleep"><option value="0">light</option><option value="1">light + deep</option></select></div>
+  <div class="srow"><label>Deep sleep</label><select id="s-sleep"><option value="0">never</option><option value="1">2 min</option><option value="2">5 min</option><option value="3">10 min</option><option value="4">15 min</option><option value="5">30 min</option></select></div>
 </div>
 <button id="sv-btn">Save Settings</button>
 <div id="sv-msg"></div>

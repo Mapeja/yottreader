@@ -20,5 +20,6 @@ void           settings_open();
 SettingsResult settings_handle(ButtonEvent evt);
 int            settings_get_refresh_interval();
 int            settings_get_sleep_mode();
+uint32_t       settings_get_deep_sleep_timeout_ms();
 WebSettings    settings_get_web();
 void           settings_apply_web(const WebSettings& s);

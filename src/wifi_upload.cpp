@@ -1,5 +1,6 @@
 #include "wifi_upload.h"
 #include "wifi_upload_page.h"
+#include "cover.h"
 #include "fonts.h"
 #include "theme.h"
 #include "settings.h"
@@ -18,13 +19,17 @@ static const char* AP_PASS = "yottreader";
 
 static WebServer server(80);
 static DNSServer dns;
-static bool      wifiActive        = false;
-static bool      serverReady       = false; // routes registered once; server.stop() doesn't clear them
+static bool      wifiActive         = false;
+static bool      serverReady        = false;
 static File      uploadFile;
-static bool      uploadOk          = true;
-static String    uploadPath        = "";
+static bool      uploadOk           = true;
+static String    uploadPath         = "";
 static size_t    uploadBytesWritten = 0;
-static size_t    uploadMaxBytes    = 0; // bytes available at upload start (with safety margin)
+static size_t    uploadMaxBytes     = 0;
+
+static File      coverFile;
+static String    coverPath          = "";
+static bool      coverOk            = true;
 
 // ── Display ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +47,7 @@ static void drawWifiScreen() {
 
     display.setFont(UI_FONT_S);
     int y = 13 + UI_FONT->yAdvance + 4;
-    display.setCursor(x, y); display.print("Network:  Yottreader");
+    display.setCursor(x, y); display.print("Network: Yottreader");
     y += UI_FONT_S->yAdvance + 1;
     display.setCursor(x, y); display.print("Password: yottreader");
     y += UI_FONT_S->yAdvance + 1;
@@ -170,7 +175,7 @@ static void handleBooks() {
         String path = bookPath(f.name());
         if (path.endsWith(".book")) {
           if (!first) json += ",";
-          json += "\"" + path + "\"";
+          json += "{\"path\":\"" + path + "\",\"size\":" + String(f.size()) + "}";
           first = false;
         }
       }
@@ -195,7 +200,38 @@ static void handleDelete() {
   String path = "/" + name;
   LittleFS.remove(path);
   LittleFS.remove(path + ".idx");
+  cover_delete(path.c_str());
   server.send(200, "text/plain", "OK");
+}
+
+static void handleCoverUploadDone() {
+  if (coverOk) {
+    server.send(200, "text/plain", "OK");
+  } else {
+    if (coverFile) coverFile.close();
+    if (coverPath.length()) LittleFS.remove(coverPath);
+    server.send(500, "text/plain", "Cover upload failed");
+  }
+}
+
+static void handleCoverUpload() {
+  HTTPUpload& u = server.upload();
+  if (u.status == UPLOAD_FILE_START) {
+    coverOk = true;
+    String bookArg = server.arg("book");
+    String sizeArg = server.arg("size");
+    if (!bookArg.length()) { coverOk = false; return; }
+    String base = bookArg;
+    if (base.endsWith(".book")) base = base.substring(0, base.length() - 5);
+    coverPath = base + (sizeArg == "lg" ? ".cvr_lg" : ".cvr_sm");
+    coverFile = LittleFS.open(coverPath, "w");
+    if (!coverFile) { coverOk = false; }
+  } else if (u.status == UPLOAD_FILE_WRITE) {
+    if (!coverOk) return;
+    if (coverFile) coverFile.write(u.buf, u.currentSize);
+  } else if (u.status == UPLOAD_FILE_END) {
+    if (coverFile) coverFile.close();
+  }
 }
 
 static void handleGetSettings() {
@@ -239,11 +275,16 @@ static void handleNotFound() {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 void wifi_upload_begin() {
+  WiFi.setSleep(false);
   WiFi.mode(WIFI_AP);
+
+  IPAddress apIP(192, 168, 4, 1);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
   WiFi.softAP(AP_SSID, AP_PASS);
+  delay(200);              // let AP fully initialise before DNS/server start
 
   dns.setErrorReplyCode(DNSReplyCode::NoError);
-  dns.start(53, "*", WiFi.softAPIP());
+  dns.start(53, "*", apIP);
 
   MDNS.begin("yottreader");
   MDNS.addService("http", "tcp", 80);
@@ -251,11 +292,20 @@ void wifi_upload_begin() {
   if (!serverReady) {
     server.on("/",       HTTP_GET,    handleRoot);
     server.on("/upload", HTTP_POST,   handleUploadDone, handleUpload);
+    server.on("/cover",  HTTP_POST,   handleCoverUploadDone, handleCoverUpload);
     server.on("/books",  HTTP_GET,    handleBooks);
     server.on("/space",  HTTP_GET,    handleSpace);
     server.on("/delete",   HTTP_DELETE, handleDelete);
     server.on("/settings", HTTP_GET,    handleGetSettings);
     server.on("/settings", HTTP_POST,   handlePostSettings);
+    // Captive portal detection for iOS, Android and Windows
+    server.on("/hotspot-detect.html",          HTTP_GET, handleRoot);
+    server.on("/library/test/success.html",    HTTP_GET, handleRoot);
+    server.on("/generate_204",                 HTTP_GET, handleRoot);
+    server.on("/gen_204",                      HTTP_GET, handleRoot);
+    server.on("/connecttest.txt",              HTTP_GET, handleRoot);
+    server.on("/ncsi.txt",                     HTTP_GET, handleRoot);
+    server.on("/redirect",                     HTTP_GET, handleRoot);
     server.onNotFound(handleNotFound);
     serverReady = true;
   }

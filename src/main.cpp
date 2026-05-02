@@ -12,6 +12,7 @@
 #include "battery.h"
 #include "menu.h"
 #include "settings.h"
+#include "cover.h"
 #include "state_machine.h"
 #include "theme.h"
 
@@ -154,8 +155,116 @@ static void loadBookMeta(const char* path, String& title, String& author) {
 }
 
 static void drawDeepSleepWallpaper(const char* path, int progressPct) {
-  String title, author;
   bool hasBook = (path && path[0]);
+
+  if (settings_get_wallpaper_mode() == 1 && hasBook) {
+    int rot = settings_get_orientation() ? 2 : 0;
+    display.setRotation(rot);
+    display.setFullWindow();
+
+    static uint8_t coverBuf[COVER_LG_BYTES];
+    bool hasCover = cover_load(path, coverBuf, COVER_LG_BYTES, true);
+
+    String title = "", author = "";
+    loadBookMeta(path, title, author);
+
+    int lh      = UI_FONT_S->yAdvance;
+    int sw      = display.width();
+    int maxTW   = sw - 4;
+    int footerH = display.height() - COVER_LG_H - 6;
+
+    // Word-wrap title fully; clip only if title exhausts all available lines
+    int maxTitleLines = (footerH - lh - 2) / lh;
+    if (maxTitleLines < 1) maxTitleLines = 1;
+    if (maxTitleLines > 6) maxTitleLines = 6;
+
+    String tlines[6];
+    int numTlines = 0;
+    {
+      String rem = title;
+      while (rem.length() && numTlines < maxTitleLines) {
+        while (rem.length() && rem[0] == ' ') rem = rem.substring(1);
+        if (!rem.length()) break;
+        bool fits = textW(UI_FONT_S, rem.c_str(), rem.length()) <= maxTW;
+        bool isLast = (numTlines == maxTitleLines - 1);
+        if (fits) {
+          tlines[numTlines++] = rem;
+          rem = "";
+          break;
+        }
+        if (isLast) {
+          while (rem.length() > 0 &&
+                 textW(UI_FONT_S, (rem + "...").c_str(), rem.length() + 3) > maxTW)
+            rem.remove(rem.length() - 1);
+          tlines[numTlines++] = rem + "...";
+          break;
+        }
+        // find last word boundary that fits
+        const char* s = rem.c_str();
+        int len = rem.length(), lastFit = 0, i = 0;
+        while (i < len) {
+          while (i < len && s[i] == ' ') i++;
+          while (i < len && s[i] != ' ') i++;
+          if (textW(UI_FONT_S, s, i) <= maxTW) lastFit = i;
+          else break;
+        }
+        if (lastFit == 0) {
+          while (rem.length() > 0 &&
+                 textW(UI_FONT_S, (rem + "...").c_str(), rem.length() + 3) > maxTW)
+            rem.remove(rem.length() - 1);
+          tlines[numTlines++] = rem + "...";
+          break;
+        }
+        tlines[numTlines++] = rem.substring(0, lastFit);
+        rem = rem.substring(lastFit);
+      }
+    }
+
+    // Show author only if space remains after prompt + title
+    bool showAuthor = author.length() > 0 &&
+                      (lh + 2 + numTlines * lh + lh) <= footerH;
+    if (showAuthor && textW(UI_FONT_S, author.c_str(), author.length()) > maxTW) {
+      while (author.length() > 0 &&
+             textW(UI_FONT_S, (author + "...").c_str(), author.length() + 3) > maxTW)
+        author.remove(author.length() - 1);
+      author += "...";
+    }
+
+    display.firstPage();
+    do {
+      display.fillScreen(theme_bg());
+      display.setTextColor(theme_fg());
+
+      if (hasCover) cover_draw(0, 0, COVER_LG_W, COVER_LG_H, coverBuf);
+      else          cover_draw_placeholder(0, 0, COVER_LG_W, COVER_LG_H, title.c_str());
+
+      display.setFont(UI_FONT_S);
+      auto cx = [&](const char* s, int n) { return (sw - textW(UI_FONT_S, s, n)) / 2; };
+      int by = COVER_LG_H + 10;
+
+      const char* prompt = "Press to Resume";
+      display.setCursor(cx(prompt, strlen(prompt)), by);
+      display.print(prompt);
+      by += lh + 2;
+
+      for (int i = 0; i < numTlines; i++) {
+        const char* tl = tlines[i].c_str();
+        display.setCursor(cx(tl, strlen(tl)), by);
+        display.print(tl);
+        by += lh;
+      }
+
+      if (showAuthor) {
+        const char* au = author.c_str();
+        display.setCursor(cx(au, strlen(au)), by);
+        display.print(au);
+      }
+    } while (display.nextPage());
+    return;
+  }
+
+  // Text wallpaper (landscape)
+  String title, author;
   if (hasBook) loadBookMeta(path, title, author);
 
   display.setFullWindow();

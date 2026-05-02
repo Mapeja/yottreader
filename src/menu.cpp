@@ -2,6 +2,8 @@
 #include "library.h"
 #include "fonts.h"
 #include "storage.h"
+#include "settings.h"
+#include "cover.h"
 #include "theme.h"
 #include "battery.h"
 #include <GxEPD2_BW.h>
@@ -10,8 +12,15 @@
 
 extern GxEPD2_BW<GxEPD2_213_GDEY0213B74, GxEPD2_213_GDEY0213B74::HEIGHT> display;
 
-static int menuCursor = 0;
-static int menuScroll = 0;
+static int menuCursor  = 0;
+static int menuScroll  = 0;
+static int coverScroll = 0;
+
+static const int COVERS_VISIBLE = 4;
+static const int COVER_GAP      = 3;
+static const int COVER_SLOT_W   = COVER_SM_W + COVER_GAP;
+static const int COVER_LEFT     = 2;
+static const int COVER_FOOTER_H = 10;
 
 static const int ITEM_H = 30;
 static const int HEADER_H = 16;
@@ -80,6 +89,97 @@ static void drawHeader() {
     display.print(hbuf);
   }
 
+}
+
+static void menuDrawCovers(bool full) {
+  int n       = library_count();
+  int y0      = HEADER_H + HEADER_GAP;
+  int contentH= display.height() - y0 - COVER_FOOTER_H;
+  int coverY  = y0 + (contentH - COVER_SM_H) / 2;
+  int footerY = display.height() - 3;
+
+  // Pre-load covers before the page loop
+  static uint8_t coverCache[5][COVER_SM_BYTES];
+  static bool    coverLoaded[5];
+  int numLoad = n - coverScroll;
+  if (numLoad > 5) numLoad = 5;
+  for (int i = 0; i < numLoad; i++) {
+    const BookEntry* b = library_get(coverScroll + i);
+    coverLoaded[i] = b && cover_load(b->path, coverCache[i], COVER_SM_BYTES, false);
+  }
+
+  if (full) display.setFullWindow();
+  else      display.setPartialWindow(0, 0, display.width(), display.height());
+
+  display.firstPage();
+  do {
+    display.fillScreen(theme_bg());
+    drawHeader();
+
+    if (n == 0) {
+      display.setFont(UI_FONT);
+      display.setTextColor(theme_fg());
+      display.setCursor(4, y0 + 10);
+      display.print("No books found");
+      continue;
+    }
+
+    for (int i = 0; i < numLoad; i++) {
+      int idx = coverScroll + i;
+      int cx  = COVER_LEFT + i * COVER_SLOT_W;
+
+      bool sel = (idx == menuCursor);
+      if (sel) {
+        display.drawRect(cx - 1, coverY - 1, COVER_SM_W + 2, COVER_SM_H + 2, theme_fg());
+      }
+
+      if (coverLoaded[i]) {
+        cover_draw(cx, coverY, COVER_SM_W, COVER_SM_H, coverCache[i]);
+      } else {
+        const BookEntry* b = library_get(idx);
+        cover_draw_placeholder(cx, coverY, COVER_SM_W, COVER_SM_H, b ? b->title : "");
+      }
+    }
+
+    // footer: title left, battery right
+    display.setFont(UI_FONT_S);
+    display.setTextColor(theme_fg());
+
+    int batt = battery_percent();
+    bool charging = battery_is_charging();
+    char btxt[16];
+    if (batt == BATTERY_USB)   snprintf(btxt, sizeof(btxt), "USB");
+    else if (charging && batt >= 0) snprintf(btxt, sizeof(btxt), "CHG %d%%", batt);
+    else if (batt >= 0)        snprintf(btxt, sizeof(btxt), "Bat: %d%%", batt);
+    else                       snprintf(btxt, sizeof(btxt), "Bat: --");
+    int bw = textW(UI_FONT_S, btxt);
+    int battX = display.width() - 4 - bw;
+    display.setCursor(battX, footerY);
+    display.print(btxt);
+
+    const BookEntry* sel = library_get(menuCursor);
+    if (sel) {
+      int progress = storage_get_book_progress(sel->path);
+      char pbuf[8] = {0};
+      if (progress == 0)     snprintf(pbuf, sizeof(pbuf), "<1%%");
+      else if (progress > 0) snprintf(pbuf, sizeof(pbuf), "%d%%", progress);
+
+      int progW  = pbuf[0] ? textW(UI_FONT_S, pbuf) + textW(UI_FONT_S, " ") : 0;
+      int titleX = 4 + progW;
+      int titleMaxW = battX - 4 - titleX;
+
+      if (pbuf[0]) {
+        display.setCursor(4, footerY);
+        display.print(pbuf);
+      }
+      if (titleMaxW > 0) {
+        char tbuf[LIBRARY_STR_LEN + 4];
+        clipEllipsis(UI_FONT_S, sel->title, tbuf, sizeof(tbuf), titleMaxW);
+        display.setCursor(titleX, footerY);
+        display.print(tbuf);
+      }
+    }
+  } while (display.nextPage());
 }
 
 static void menuDraw(bool full) {
@@ -166,8 +266,10 @@ static void menuDraw(bool full) {
     display.print(cbuf);
 
     int batt = battery_percent();
+    bool charging = battery_is_charging();
     char btxt[16];
     if (batt == BATTERY_USB)   snprintf(btxt, sizeof(btxt), "USB");
+    else if (charging && batt >= 0) snprintf(btxt, sizeof(btxt), "CHG %d%%", batt);
     else if (batt >= 0)        snprintf(btxt, sizeof(btxt), "Bat: %d%%", batt);
     else                       snprintf(btxt, sizeof(btxt), "Bat: --");
     int bw = textW(UI_FONT_S, btxt);
@@ -176,20 +278,46 @@ static void menuDraw(bool full) {
   } while (display.nextPage());
 }
 
+static bool isCoverMode() { return settings_get_library_mode() == 1; }
+
 void menu_open() {
-  menuCursor = 0;
-  menuScroll = 0;
+  menuCursor  = 0;
+  menuScroll  = 0;
+  coverScroll = 0;
   library_resort();
-  menuDraw(true);
+  if (isCoverMode()) menuDrawCovers(true);
+  else               menuDraw(true);
 }
 
 const char* menu_handle(ButtonEvent evt) {
-  int n   = library_count();
-  int vis = (display.height() - (HEADER_H + HEADER_GAP)) / ITEM_H;
+  int n = library_count();
 
   if (evt == BTN_CLICK_HOLD) return "";  // caller enters settings
-
   if (n == 0) return nullptr;
+
+  if (isCoverMode()) {
+    if (evt == BTN_SINGLE) {
+      menuCursor = (menuCursor + 1) % n;
+      if (menuCursor >= coverScroll + COVERS_VISIBLE) coverScroll = menuCursor - COVERS_VISIBLE + 1;
+      if (menuCursor < coverScroll) coverScroll = menuCursor;
+      menuDrawCovers(false);
+      return nullptr;
+    }
+    if (evt == BTN_DOUBLE) {
+      menuCursor = (menuCursor - 1 + n) % n;
+      if (menuCursor < coverScroll) coverScroll = menuCursor;
+      if (menuCursor >= coverScroll + COVERS_VISIBLE) coverScroll = menuCursor - COVERS_VISIBLE + 1;
+      menuDrawCovers(false);
+      return nullptr;
+    }
+    if (evt == BTN_LONG) {
+      const BookEntry* b = library_get(menuCursor);
+      return b ? b->path : nullptr;
+    }
+    return nullptr;
+  }
+
+  int vis = (display.height() - (HEADER_H + HEADER_GAP)) / ITEM_H;
 
   if (evt == BTN_SINGLE) {
     menuCursor = (menuCursor + 1) % n;

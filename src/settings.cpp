@@ -9,21 +9,23 @@
 
 extern GxEPD2_BW<GxEPD2_213_GDEY0213B74, GxEPD2_213_GDEY0213B74::HEIGHT> display;
 
-static const int REFRESH_OPTIONS[] = { 5, 10, 20, 50 };
+static const int REFRESH_OPTIONS[] = { 5, 10, 25, 50, 100 };
 static const int REFRESH_COUNT = sizeof(REFRESH_OPTIONS) / sizeof(REFRESH_OPTIONS[0]);
 static const int HEADER_H = 16;
 static const int HEADER_GAP = 2;
 
 enum SettingId {
-  SET_FONT_SIZE = 0,
+  SET_WIFI_UPLOAD = 0,
+  SET_FONT_SIZE,
   SET_FONT_FAMILY,
   SET_HYPHENATION,
+  SET_STATS,
+  SET_SLEEP_MODE,
+  SET_WALLPAPER,
+  SET_LIBRARY_MODE,
   SET_DISPLAY_MODE,
   SET_ORIENTATION,
   SET_REFRESH,
-  SET_STATS,
-  SET_SLEEP_MODE,
-  SET_WIFI_UPLOAD,
   SET_SHORTCUTS,
   SET_COUNT
 };
@@ -40,16 +42,18 @@ struct Setting {
 };
 
 static Setting cfg[SET_COUNT] = {
-  { "Font size",   SK_CHOICE, FONT_SIZE_MEDIUM, 0, 2 },
-  { "Font",        SK_CHOICE, FONT_FAMILY_SANS, 0, 3 },
-  { "Hyphenation", SK_CHOICE, 0,                0, 1 },
-  { "Display",     SK_CHOICE, 0,                0, 1 }, // 0 light, 1 dark (placeholder)
-  { "Orientation", SK_CHOICE, 0,                0, 1 }, // 0 normal, 1 flipped
-  { "Refresh",     SK_CHOICE, 10,               0, 0 }, // fixed options
-  { "Stats bar",   SK_CHOICE, 0,                0, 2 }, // 0 off, 1 chapter, 2 book
-  { "Deep sleep",  SK_CHOICE, 0,                0, 5 }, // 0 never, 1-5 = 2/5/10/15/30 min
-  { "WiFi upload", SK_ACTION, 0,                0, 0 },
-  { "Shortcuts",   SK_ACTION, 0,                0, 0 },
+  { "WiFi Upload",          SK_ACTION, 0,                0, 0 },
+  { "Font Size",            SK_CHOICE, FONT_SIZE_MEDIUM, 0, 2 },
+  { "Font Selection",       SK_CHOICE, FONT_FAMILY_SANS, 0, 3 },
+  { "Hyphenation",          SK_CHOICE, 1,                0, 1 },
+  { "Stats Bar",            SK_CHOICE, 0,                0, 2 }, // 0 off, 1 chapter, 2 book
+  { "Deep Sleep",           SK_CHOICE, 2,                0, 5 }, // 0 never, 1-5 = 2/5/10/15/30 min
+  { "Wallpaper",            SK_CHOICE, 1,                0, 1 }, // 0 text, 1 cover
+  { "Library View",         SK_CHOICE, 0,                0, 1 }, // 0 list, 1 cover
+  { "Theme",                SK_CHOICE, 0,                0, 1 }, // 0 light, 1 dark
+  { "Orientation",          SK_CHOICE, 0,                0, 1 }, // 0 normal, 1 flipped
+  { "Refresh Rate",         SK_CHOICE, 50,               0, 0 }, // fixed options
+  { "Shortcuts",            SK_ACTION, 0,                0, 0 },
 };
 
 struct ShortcutLine {
@@ -150,7 +154,7 @@ static void drawHeader(const char* title, const char* legend) {
 
 static int normalizeRefresh(int v) {
   for (int i = 0; i < REFRESH_COUNT; i++) if (REFRESH_OPTIONS[i] == v) return v;
-  return 10;
+  return 50;
 }
 
 static int refreshIdx(int v) {
@@ -221,10 +225,14 @@ static const char* valueStr(int id) {
         case 5: return "30 min";
         default: return "never";
       }
+    case SET_WALLPAPER:
+      return cfg[id].value ? "cover" : "text";
+    case SET_LIBRARY_MODE:
+      return cfg[id].value ? "cover" : "list";
     case SET_WIFI_UPLOAD:
       return "activate";
     case SET_SHORTCUTS:
-      return "view";
+      return "hold to view";
   }
   return "";
 }
@@ -249,6 +257,8 @@ static void saveAll() {
   prefs.putInt("refresh_n", cfg[SET_REFRESH].value);
   prefs.putInt("stats_mode",cfg[SET_STATS].value);
   prefs.putInt("sleep",     cfg[SET_SLEEP_MODE].value);
+  prefs.putInt("wallpaper", cfg[SET_WALLPAPER].value);
+  prefs.putInt("lib_mode",  cfg[SET_LIBRARY_MODE].value);
   prefs.end();
 }
 
@@ -271,7 +281,9 @@ void settings_load() {
   cfg[SET_ORIENTATION].value = prefs.getInt("orient",    0);
   cfg[SET_REFRESH].value     = prefs.getInt("refresh_n",  10);
   cfg[SET_STATS].value       = prefs.getInt("stats_mode", 0);
-  cfg[SET_SLEEP_MODE].value  = prefs.getInt("sleep",      0);
+  cfg[SET_SLEEP_MODE].value     = prefs.getInt("sleep",      0);
+  cfg[SET_WALLPAPER].value      = prefs.getInt("wallpaper",  0);
+  cfg[SET_LIBRARY_MODE].value   = prefs.getInt("lib_mode",   0);
   prefs.end();
   clampAll();
   applyAll();
@@ -281,6 +293,9 @@ int settings_get_refresh_interval() { return cfg[SET_REFRESH].value; }
 int settings_get_sleep_mode() {
   return cfg[SET_SLEEP_MODE].value > 0 ? SLEEP_LIGHT_AND_DEEP : SLEEP_LIGHT_ONLY;
 }
+int      settings_get_orientation()   { return cfg[SET_ORIENTATION].value; }
+int      settings_get_wallpaper_mode(){ return cfg[SET_WALLPAPER].value; }
+int      settings_get_library_mode()  { return cfg[SET_LIBRARY_MODE].value; }
 uint32_t settings_get_deep_sleep_timeout_ms() {
   static const uint32_t TABLE[] = { 0, 2*60000UL, 5*60000UL, 10*60000UL, 15*60000UL, 30*60000UL };
   int v = cfg[SET_SLEEP_MODE].value;

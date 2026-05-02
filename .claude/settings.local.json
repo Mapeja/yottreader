@@ -30,7 +30,8 @@
       "PowerShell(cd \"c:\\\\Users\\\\stund\\\\OneDrive\\\\Dokumente\\\\PlatformIO\\\\Projects\\\\yottreader\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 8)",
       "Bash(python tools/font_inspect.py src/fonts/AtkinsonHyperlegible_Bold8pt7b.h --chars \"lino\")",
       "Bash(python3 -c ' *)",
-      "Bash(python tools/font_inspect.py src/fonts/AtkinsonHyperlegible_Bold8pt7b.h --chars \"Il.O\")"
+      "Bash(python tools/font_inspect.py src/fonts/AtkinsonHyperlegible_Bold8pt7b.h --chars \"Il.O\")",
+      "Bash(~/.platformio/penv/Scripts/pio run *)"
     ]
   }
 }

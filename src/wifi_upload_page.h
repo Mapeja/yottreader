@@ -68,7 +68,7 @@ h2{font-size:1rem;margin:16px 0 8px;color:#444}
   <div class="srow"><label>Hyphenation</label><select id="s-hyphen"><option value="0">off</option><option value="1">on</option></select></div>
   <div class="srow"><label>Display</label><select id="s-display"><option value="0">light</option><option value="1">dark</option></select></div>
   <div class="srow"><label>Orientation</label><select id="s-orient"><option value="0">normal</option><option value="1">flipped</option></select></div>
-  <div class="srow"><label>Full refresh every</label><select id="s-refresh"><option value="5">5 pages</option><option value="10">10 pages</option><option value="20">20 pages</option><option value="50">50 pages</option></select></div>
+  <div class="srow"><label>Full refresh every</label><select id="s-refresh"><option value="5">5 pages</option><option value="10">10 pages</option><option value="25">25 pages</option><option value="50">50 pages</option><option value="100">100 pages</option></select></div>
   <div class="srow"><label>Stats bar</label><select id="s-stats"><option value="0">off</option><option value="1">chapter</option><option value="2">book</option></select></div>
   <div class="srow"><label>Deep sleep</label><select id="s-sleep"><option value="0">never</option><option value="1">2 min</option><option value="2">5 min</option><option value="3">10 min</option><option value="4">15 min</option><option value="5">30 min</option></select></div>
 </div>
@@ -98,21 +98,129 @@ function Zip(ab) {
     p += 46 + fnl + exl + cml;
   }
 }
-Zip.prototype.text = async function(name) {
-  var e = this.e[name]; if (!e) return null;
-  var lp = e.off, skip = 30 + this.v.getUint16(lp+26,true) + this.v.getUint16(lp+28,true);
-  var data = this.b.slice(lp+skip, lp+skip+e.csz);
-  if (e.comp === 0) return new TextDecoder().decode(data);
-  if (e.comp !== 8) throw new Error('Unsupported compression: '+e.comp);
+Zip.prototype._decomp = async function(entry) {
+  var lp = entry.off, skip = 30 + this.v.getUint16(lp+26,true) + this.v.getUint16(lp+28,true);
+  var data = this.b.slice(lp+skip, lp+skip+entry.csz);
+  if (entry.comp === 0) return data;
+  if (entry.comp !== 8) throw new Error('Unsupported compression: '+entry.comp);
   var ds = new DecompressionStream('deflate-raw');
   var w = ds.writable.getWriter(); w.write(data); w.close();
   var chunks = [], r = ds.readable.getReader();
   for (;;) { var x = await r.read(); if (x.done) break; chunks.push(x.value); }
   var tot = 0; for (var i=0;i<chunks.length;i++) tot+=chunks[i].length;
-  var out = new Uint8Array(tot), off = 0;
-  for (var i=0;i<chunks.length;i++) { out.set(chunks[i], off); off+=chunks[i].length; }
-  return new TextDecoder().decode(out);
+  var out = new Uint8Array(tot), off2 = 0;
+  for (var i=0;i<chunks.length;i++) { out.set(chunks[i], off2); off2+=chunks[i].length; }
+  return out;
 };
+Zip.prototype.text = async function(name) {
+  var e = this.e[name]; if (!e) return null;
+  return new TextDecoder().decode(await this._decomp(e));
+};
+Zip.prototype.bytes = async function(name) {
+  var e = this.e[name]; if (!e) return null;
+  return await this._decomp(e);
+};
+
+// ── Cover extraction ──────────────────────────────────────────────────────────
+async function extractCoverBytes(zip, opf, opfDir) {
+  var items = opf.querySelectorAll('item'), coverHref = null;
+  // Method 1: properties="cover-image"
+  for (var i = 0; i < items.length && !coverHref; i++) {
+    if ((items[i].getAttribute('properties')||'').indexOf('cover-image') >= 0)
+      coverHref = items[i].getAttribute('href');
+  }
+  // Method 2: <meta name="cover" content="id"/>
+  if (!coverHref) {
+    var metas = opf.querySelectorAll('meta');
+    for (var i = 0; i < metas.length && !coverHref; i++) {
+      if ((metas[i].getAttribute('name')||'').toLowerCase() === 'cover') {
+        var id = metas[i].getAttribute('content');
+        for (var j = 0; j < items.length; j++) {
+          if (items[j].getAttribute('id') === id) { coverHref = items[j].getAttribute('href'); break; }
+        }
+      }
+    }
+  }
+  // Method 3: id="cover-image" or id="cover" with image mime
+  if (!coverHref) {
+    for (var i = 0; i < items.length && !coverHref; i++) {
+      var id = (items[i].getAttribute('id')||'').toLowerCase();
+      var mt = (items[i].getAttribute('media-type')||'').toLowerCase();
+      if ((id === 'cover' || id === 'cover-image' || id === 'coverimage') && mt.startsWith('image/'))
+        coverHref = items[i].getAttribute('href');
+    }
+  }
+  if (!coverHref) return null;
+  var href = coverHref.split('#')[0];
+  var data = await zip.bytes(opfDir + href);
+  if (!data) data = await zip.bytes(href);
+  return data || null;
+}
+
+function ditherBayer(ctx, w, h) {
+  var M = [[ 0,  8,  2, 10],
+           [12,  4, 14,  6],
+           [ 3, 11,  1,  9],
+           [15,  7, 13,  5]];
+  var px = ctx.getImageData(0, 0, w, h).data;
+  var rb = Math.ceil(w/8), out = new Uint8Array(rb*h);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var i = (y*w+x)*4;
+      var gray = 0.299*px[i] + 0.587*px[i+1] + 0.114*px[i+2];
+      var thresh = (M[y&3][x&3]+1) * (255/16);
+      if (gray < thresh) out[y*rb + (x>>3)] |= (1 << (7-(x&7)));
+    }
+  }
+  return out;
+}
+
+function ditherToOneBit(ctx, w, h) {
+  var px = ctx.getImageData(0, 0, w, h).data;
+  var g = new Float32Array(w * h);
+  for (var i = 0; i < w * h; i++) g[i] = 0.299*px[i*4] + 0.587*px[i*4+1] + 0.114*px[i*4+2];
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      var idx = y*w+x, old = g[idx], nv = old < 128 ? 0 : 255, err = old - nv;
+      g[idx] = nv;
+      if (x+1 < w)   g[idx+1]   += err*7/16;
+      if (y+1 < h) {
+        if (x > 0)   g[idx+w-1] += err*3/16;
+                     g[idx+w]   += err*5/16;
+        if (x+1 < w) g[idx+w+1] += err*1/16;
+      }
+    }
+  }
+  var rb = Math.ceil(w/8), out = new Uint8Array(rb*h);
+  for (var y = 0; y < h; y++)
+    for (var x = 0; x < w; x++)
+      if (g[y*w+x] < 128) out[y*rb + (x>>3)] |= (1 << (7-(x&7)));
+  return out;
+}
+
+async function renderCoverBitmap(imgBytes, tw, th, bayer) {
+  var url = URL.createObjectURL(new Blob([imgBytes]));
+  try {
+    var img = await new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=rej; i.src=url; });
+    var canvas = document.createElement('canvas'); canvas.width=tw; canvas.height=th;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,tw,th);
+    var scale = Math.min(tw/img.width, th/img.height);
+    ctx.drawImage(img, (tw-img.width*scale)/2, (th-img.height*scale)/2, img.width*scale, img.height*scale);
+    return bayer ? ditherBayer(ctx, tw, th) : ditherToOneBit(ctx, tw, th);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function uploadCover(bitmap, bookPath, size) {
+  return new Promise(function(resolve) {
+    var fd = new FormData();
+    fd.append('file', new Blob([bitmap],{type:'application/octet-stream'}), size+'.bin');
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/cover?book='+encodeURIComponent(bookPath)+'&size='+size);
+    xhr.onload = xhr.onerror = function(){ resolve(); };
+    xhr.send(fd);
+  });
+}
 
 var BLOCK_TAGS = {p:1,div:1,h1:1,h2:1,h3:1,h4:1,h5:1,h6:1,li:1,blockquote:1,tr:1,td:1,th:1,section:1,article:1,header:1,footer:1};
 function extractText(node) {
@@ -184,7 +292,18 @@ async function epubToBook(file) {
   }
   if (!chapters) throw new Error('No readable text found');
   var fname = title.replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'_').slice(0,50)+'.book';
-  return {book:book, fname:fname, title:title};
+
+  // Extract and dither cover (best-effort, non-fatal)
+  var coverLg = null, coverSm = null;
+  try {
+    var coverBytes = await extractCoverBytes(zip, opf, opfDir);
+    if (coverBytes) {
+      coverLg = await renderCoverBitmap(coverBytes, 128, 192, false);
+      coverSm = await renderCoverBitmap(coverBytes, 56, 84, true);
+    }
+  } catch(e) { /* no cover */ }
+
+  return {book:book, fname:fname, title:title, coverLg:coverLg, coverSm:coverSm};
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────
@@ -215,22 +334,30 @@ function loadSpace() {
 }
 
 // ── Book list ─────────────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  return bytes >= 1024 ? Math.round(bytes/1024)+' KB' : bytes+' B';
+}
+
 function loadBooks() {
   return fetch('/books?_='+Date.now()).then(function(r){ return r.json(); }).then(function(list) {
     var el = document.getElementById('books');
     el.innerHTML = '';
     if (!list.length) { el.innerHTML = '<div class="empty">No books yet.</div>'; return; }
-    list.forEach(function(path) {
+    list.forEach(function(entry) {
+      var path = entry.path, size = entry.size;
       var row = document.createElement('div'); row.className = 'brow';
       var lbl = document.createElement('span');
       lbl.textContent = path.replace(/^\//,'').replace(/\.book$/,'');
+      var sz = document.createElement('span');
+      sz.textContent = fmtSize(size);
+      sz.style.cssText = 'color:#888;font-size:.8rem;flex-shrink:0;margin-right:8px';
       var btn = document.createElement('button'); btn.className = 'del'; btn.textContent = 'Delete';
       btn.onclick = function() {
         btn.disabled = true;
         fetch('/delete?name='+encodeURIComponent(path), {method:'DELETE'})
           .then(function(){ return Promise.all([loadBooks(), loadSpace()]); });
       };
-      row.appendChild(lbl); row.appendChild(btn);
+      row.appendChild(lbl); row.appendChild(sz); row.appendChild(btn);
       el.appendChild(row);
     });
   }).catch(function(){
@@ -275,6 +402,12 @@ function processFiles(files) {
           status.textContent = 'Uploading: '+result.title+' ... 0%';
           return uploadBook(result.book, result.fname, function(p) {
             status.textContent = 'Uploading: '+result.title+' ... '+Math.round(p*100)+'%';
+          }).then(function() {
+            var bookPath = '/' + result.fname;
+            var cp = Promise.resolve();
+            if (result.coverLg) cp = cp.then(function(){ return uploadCover(result.coverLg, bookPath, 'lg'); });
+            if (result.coverSm) cp = cp.then(function(){ return uploadCover(result.coverSm, bookPath, 'sm'); });
+            return cp;
           }).then(function() {
             status.className = 'msg ok';
             status.textContent = 'Done: '+result.title;
